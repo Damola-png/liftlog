@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiftLog - Elevator Incident Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside class="side">
+    <div class="logo">
+      <div class="logo-mark">LIFT<br>LOG</div>
+      <div class="logo-sub">Incident Tracker</div>
+    </div>
+    <nav class="nav">
+      <button class="ni on" onclick="go('dash')"><i class="ti ti-layout-dashboard"></i>Dashboard</button>
+      <button class="ni" onclick="go('add')"><i class="ti ti-plus"></i>Add Incident</button>
+      <button class="ni" onclick="go('log')"><i class="ti ti-list-details"></i>Incident Log</button>
+      <button class="ni" onclick="go('trap')"><i class="ti ti-alert-triangle"></i>Entrapment Tracker</button>
+      <button class="ni" onclick="go('dl')"><i class="ti ti-file-spreadsheet"></i>Excel Export</button>
+    </nav>
+    <div class="yr-box">
+      <label>Year</label>
+      <select id="gyr" onchange="refresh()"></select>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="pg on" id="pg-dash">
+      <div class="ph">
+        <div class="pt">Dashboard</div>
+        <div class="ps" id="dash-sub">Loading...</div>
+      </div>
+      <div class="krow">
+        <div class="kpi kb"><div class="kv" id="k-tot">0</div><div class="kl">Total Incidents</div></div>
+        <div class="kpi kr"><div class="kv" id="k-tr">0</div><div class="kl">Entrapments</div></div>
+        <div class="kpi kp"><div class="kv" id="k-ot">0</div><div class="kl">Other</div></div>
+        <div class="kpi ko"><div class="kv" id="k-op">0</div><div class="kl">Open</div></div>
+        <div class="kpi ka"><div class="kv" id="k-ip">0</div><div class="kl">In Progress</div></div>
+        <div class="kpi kg"><div class="kv" id="k-re">0</div><div class="kl">Resolved</div></div>
+      </div>
+      <div class="top-ban"><i class="ti ti-trophy"></i>Most incidents: <strong id="top-elev">-</strong></div>
+      <div class="crow">
+        <div class="cc">
+          <div class="ct">Incidents by elevator</div>
+          <div class="bw" id="elev-bars"></div>
+        </div>
+        <div class="cc">
+          <div class="ct">Issue type breakdown</div>
+          <div style="margin-bottom:14px"><canvas id="pie-c" width="160" height="160" style="display:block;margin:0 auto"></canvas></div>
+          <div class="pg2" id="pie-leg"></div>
+        </div>
+      </div>
+      <div class="cc full">
+        <div class="ct">Monthly incident trend</div>
+        <div class="tbs" id="trend"></div>
+        <div style="display:flex;gap:5px;margin-top:7px" id="trend-lbl"></div>
+      </div>
+    </div>
+
+    <!-- ADD INCIDENT -->
+    <div class="pg" id="pg-add">
+      <div class="ph">
+        <div class="pt">Add Incident</div>
+        <div class="ps">Record a new elevator incident</div>
+      </div>
+      <div class="toast" id="add-toast"></div>
+      <div class="fg">
+        <div class="fgr"><label>Date *</label><input type="date" id="f-date"></div>
+        <div class="fgr"><label>Building *</label><input type="text" id="f-bld" placeholder="e.g. Main Building"></div>
+        <div class="fgr"><label>Elevator *</label><select id="f-elev"></select></div>
+        <div class="fgr"><label>Issue Type *</label><select id="f-issue"></select></div>
+        <div class="fgr"><label>Status</label>
+          <select id="f-stat"><option>Open</option><option>In Progress</option><option>Resolved</option></select>
+        </div>
+        <div class="fgr fw"><label>Description</label><textarea id="f-desc" placeholder="Describe what happened..."></textarea></div>
+        <div class="fgr fw"><label>Resolution Notes</label><textarea id="f-notes" placeholder="Steps taken or planned..." style="min-height:60px"></textarea></div>
+      </div>
+      <button class="btn-p" onclick="saveInc()"><i class="ti ti-device-floppy"></i>Save Incident</button>
+    </div>
+
+    <!-- INCIDENT LOG -->
+    <div class="pg" id="pg-log">
+      <div class="ph">
+        <div class="pt">Incident Log <span class="cnt" id="log-cnt">0</span></div>
+        <div class="ps">All recorded incidents - searchable and filterable</div>
+      </div>
+      <div class="fr">
+        <select id="lf-yr" onchange="renderLog()"><option value="">All Years</option></select>
+        <select id="lf-mo" onchange="renderLog()"><option value="">All Months</option></select>
+        <select id="lf-el" onchange="renderLog()"><option value="">All Elevators</option></select>
+        <select id="lf-is" onchange="renderLog()"><option value="">All Issue Types</option></select>
+        <select id="lf-st" onchange="renderLog()"><option value="">All Statuses</option></select>
+        <input type="text" id="lf-q" placeholder="Search description..." oninput="renderLog()" style="min-width:160px">
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th>#</th><th>Date</th><th>Building</th><th>Elevator</th><th>Issue Type</th><th>Description</th><th>Status</th></tr></thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ENTRAPMENT TRACKER -->
+    <div class="pg" id="pg-trap">
+      <div class="ph">
+        <div class="pt">Entrapment Tracker</div>
+        <div class="ps" id="trap-sub">Passenger entrapment incidents only</div>
+      </div>
+      <div class="trap3">
+        <div class="kpi kr"><div class="kv" id="tr-tot">0</div><div class="kl">Total Entrapments</div></div>
+        <div class="kpi ko"><div class="kv" id="tr-op">0</div><div class="kl">Open</div></div>
+        <div class="kpi kg"><div class="kv" id="tr-re">0</div><div class="kl">Resolved</div></div>
+      </div>
+      <div class="cc" style="margin-bottom:18px">
+        <div class="ct">Entrapments by elevator</div>
+        <div class="bw" id="trap-bars"></div>
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th>#</th><th>Date</th><th>Building</th><th>Elevator</th><th>Description</th><th>Status</th><th>Resolution Notes</th></tr></thead>
+          <tbody id="trap-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- EXCEL EXPORT -->
+    <div class="pg" id="pg-dl">
+      <div class="ph">
+        <div class="pt">Excel Export</div>
+        <div class="ps">Download a full .xlsx workbook for any year</div>
+      </div>
+      <div class="dl-prev">
+        <div class="dlm"><div class="v" id="dl-tot">0</div><div class="l">Total Incidents</div></div>
+        <div class="dlm"><div class="v" id="dl-tr">0</div><div class="l">Entrapments</div></div>
+        <div class="dlm"><div class="v" id="dl-op">0</div><div class="l">Open Cases</div></div>
+      </div>
+      <div class="dl-card">
+        <h3>Workbook includes 5 sheets</h3>
+        <ul class="dl-list">
+          <li><i class="ti ti-table"></i>Incident_Log - every incident with all fields, frozen header</li>
+          <li><i class="ti ti-alert-triangle"></i>Entrapments - filtered entrapment records only</li>
+          <li><i class="ti ti-calendar-stats"></i>Monthly_Summary - month-by-month counts with totals</li>
+          <li><i class="ti ti-chart-bar"></i>Dashboard - KPI summary + 3 embedded Excel charts</li>
+          <li><i class="ti ti-database"></i>Chart_Data - source data powering the charts</li>
+        </ul>
+        <div class="btns-row">
+          <button class="btn-p" id="xl-btn" onclick="exportXLSX()"><i class="ti ti-file-spreadsheet"></i>Download Excel (.xlsx)</button>
+          <button class="btn-s" onclick="exportCSV()"><i class="ti ti-file-text"></i>Download CSV (fallback)</button>
+        </div>
+        <div class="xl-status" id="xl-status"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
