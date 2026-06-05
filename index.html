@@ -16,6 +16,7 @@
   <!-- SIDEBAR -->
   <aside class="side">
     <div class="logo">
+      <img class="comp_logo" src="CousinsLogo.png" alt="company logo">
       <div class="logo-mark">LIFT LOG</div>
       <div class="logo-sub">Incident Tracker</div>
     </div>
@@ -76,13 +77,6 @@
         <div class="ps">Record a new elevator incident</div>
       </div>
       <div class="toast" id="add-toast"></div>
-      <div class="import-card">
-        <div class="file-drop-zone">
-          <label class="file-drop" for="pdf-upload">Upload PDF</label>
-          <input type="file" id="pdf-upload" accept="application/pdf">
-        </div>
-        <div class="import-status" id="pdf-status">Ready for a single incident report PDF.</div>
-      </div>
       <div class="fg">
         <div class="fgr"><label>Date *</label><input type="date" id="f-date"></div>
         <div class="fgr"><label>Building *</label><input type="text" id="f-bld" placeholder="e.g. Main Building"></div>
@@ -94,10 +88,7 @@
         <div class="fgr fw"><label>Description</label><textarea id="f-desc" placeholder="Describe what happened..."></textarea></div>
         <div class="fgr fw"><label>Resolution Notes</label><textarea id="f-notes" placeholder="Steps taken or planned..." style="min-height:60px"></textarea></div>
       </div>
-      <div class="btns-row">
-        <button class="btn-p" onclick="saveInc()"><i class="ti ti-device-floppy"></i>Save Incident</button>
-        <button class="btn-s" id="clear-btn" type="button"><i class="ti ti-eraser"></i>Clear Form</button>
-      </div>
+      <button class="btn-p" onclick="saveInc()"><i class="ti ti-device-floppy"></i>Save Incident</button>
     </div>
 
     <!-- INCIDENT LOG -->
