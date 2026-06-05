@@ -762,7 +762,9 @@ td:first-child{
 .file-drop-zone.drag-on{border-color:#2d7a46;background:#e8f7ee}
 .file-drop{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:130px;background:var(--surf);border:1px solid var(--bdr2);border-radius:var(--r);padding:10px 14px;color:var(--tx2);cursor:pointer;font-family:var(--fh);font-size:12px;text-transform:uppercase;letter-spacing:.4px}
 .file-drop:hover{border-color:var(--acc);color:var(--acc)}
-#pdf-upload{display:block;max-width:100%;font-size:12px;color:var(--tx2)}
+#pdf-upload{display:block;max-width:100%;font-size:14px;color:var(--tx2);padding:6px 0}
+#pdf-upload::file-selector-button{font-size:14px;padding:10px 14px;border:1px solid var(--bdr2);border-radius:var(--r);background:var(--surf2);color:var(--tx2);cursor:pointer;font-family:var(--fb)}
+#pdf-upload::file-selector-button:hover{border-color:var(--acc);color:var(--acc)}
 .api-key-row{grid-column:1/-1}
 .import-status{grid-column:1/-1;font-size:12px;color:var(--tx3)}
 .import-status.loading{color:var(--acc)}
