@@ -1,9 +1,13 @@
 const path = require('path');
 require('dotenv').config();
 const express = require('express');
+const bcrypt = require('bcryptjs');
+const { OAuth2Client } = require('google-auth-library');
+const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const pdfjs = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
+const { hasDatabase, getPool, initDatabase } = require('./db');
 
 pdfjs.disableWorker = true;
 
@@ -16,9 +20,122 @@ const upload = multer({
 const ISSUES = ['Entrapment', 'Door Issue', 'Mechanical Failure', 'Power Outage', 'Inspection Issue', 'Noise/Vibration', 'Other'];
 const STATS = ['Open', 'In Progress', 'Resolved'];
 const DEFAULT_OPENAI_MODEL = 'gpt-4o';
+const JWT_EXPIRY = '7d';
+let googleClient;
 
 function getEnv(name) {
   return globalThis.Netlify?.env?.get?.(name) || process.env[name] || '';
+}
+
+function getJwtSecret() {
+  const secret = getEnv('JWT_SECRET').trim() || getEnv('OPENAI_API_KEY').trim();
+  if (!secret) {
+    throw new Error('Missing JWT secret. Set JWT_SECRET in environment variables.');
+  }
+  return secret;
+}
+
+function getGoogleClientId() {
+  return getEnv('GOOGLE_CLIENT_ID').trim();
+}
+
+function getGoogleClient() {
+  const clientId = getGoogleClientId();
+  if (!clientId) throw new Error('Google sign-in is not configured. Set GOOGLE_CLIENT_ID.');
+  if (!googleClient) googleClient = new OAuth2Client(clientId);
+  return googleClient;
+}
+
+async function verifyGoogleToken(idToken) {
+  const ticket = await getGoogleClient().verifyIdToken({
+    idToken,
+    audience: getGoogleClientId()
+  });
+  const payload = ticket.getPayload();
+  if (!payload?.email || !payload?.sub || !payload.email_verified) {
+    throw new Error('Invalid Google account payload.');
+  }
+  return {
+    email: sanitizeEmail(payload.email),
+    googleSub: String(payload.sub),
+  };
+}
+
+function sanitizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function sanitizeIncident(input, fallbackId) {
+  const idValue = Number(input?.id);
+  const id = Number.isInteger(idValue) && idValue > 0 ? idValue : fallbackId;
+  const issue = ISSUES.includes(input?.issue) ? input.issue : 'Other';
+  const status = STATS.includes(input?.status) ? input.status : 'Open';
+  const date = normalizeDate(input?.date) || new Date().toISOString().slice(0, 10);
+
+  return {
+    id,
+    date,
+    building: String(input?.building || '').trim() || 'Unknown Location',
+    location: String(input?.location || '').trim() || String(input?.building || '').trim() || 'Unknown Location',
+    elevator: String(input?.elevator || '').replace(/^Elevator\s+/i, '').trim() || '1',
+    issue,
+    status,
+    description: String(input?.description || '').trim() || 'No description provided.',
+    notes: String(input?.notes || '').trim() || 'No additional notes provided.',
+    reference: String(input?.reference || '').trim() || 'N/A',
+    created: String(input?.created || '').trim() || new Date().toISOString()
+  };
+}
+
+function sanitizeIncidentList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((incident, index) => sanitizeIncident(incident, index + 1));
+}
+
+function extractToken(req) {
+  const auth = String(req.headers.authorization || '');
+  if (!auth.toLowerCase().startsWith('bearer ')) return '';
+  return auth.slice(7).trim();
+}
+
+function requireAuth(req, res, next) {
+  try {
+    const token = extractToken(req);
+    if (!token) return res.status(401).json({ error: 'Missing auth token.' });
+    const payload = jwt.verify(token, getJwtSecret());
+    req.user = { id: payload.sub, email: payload.email };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired auth token.' });
+  }
+}
+
+function ensureDatabase(res) {
+  if (!hasDatabase()) {
+    res.status(503).json({ error: 'Database is not configured. Set DATABASE_URL first.' });
+    return false;
+  }
+  return true;
+}
+
+async function readUserIncidents(userId) {
+  const db = getPool();
+  const result = await db.query('SELECT incidents_json FROM user_data WHERE user_id = $1', [userId]);
+  if (!result.rowCount) return [];
+  return sanitizeIncidentList(result.rows[0].incidents_json || []);
+}
+
+async function writeUserIncidents(userId, incidents) {
+  const db = getPool();
+  await db.query(
+    `
+      INSERT INTO user_data (user_id, incidents_json, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET incidents_json = EXCLUDED.incidents_json, updated_at = NOW()
+    `,
+    [userId, JSON.stringify(sanitizeIncidentList(incidents))]
+  );
 }
 
 const AI_SYSTEM_PROMPT = `You are an expert elevator incident data extractor.
@@ -529,7 +646,174 @@ async function importPdfBuffer(buffer) {
   return { incident, warning, rawText: rawText.slice(0, 800) };
 }
 
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(__dirname));
+
+app.post('/api/auth/register', async (req, res) => {
+  if (!ensureDatabase(res)) return;
+
+  try {
+    await initDatabase();
+    const email = sanitizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    const db = getPool();
+    const hash = await bcrypt.hash(password, 10);
+
+    const result = await db.query(
+      `
+        INSERT INTO users (email, password_hash, auth_provider)
+        VALUES ($1, $2, 'local')
+        RETURNING id, email
+      `,
+      [email, hash]
+    );
+
+    await writeUserIncidents(result.rows[0].id, []);
+    const token = jwt.sign({ sub: result.rows[0].id, email: result.rows[0].email }, getJwtSecret(), { expiresIn: JWT_EXPIRY });
+
+    return res.status(201).json({ token, user: { id: result.rows[0].id, email: result.rows[0].email } });
+  } catch (err) {
+    if (String(err.message || '').includes('duplicate key')) {
+      return res.status(409).json({ error: 'Email already exists. Please log in.' });
+    }
+    console.error('[auth/register] fatal error:', err);
+    return res.status(500).json({ error: 'Could not create account.' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  if (!ensureDatabase(res)) return;
+
+  try {
+    await initDatabase();
+    const email = sanitizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    const db = getPool();
+    const result = await db.query('SELECT id, email, password_hash, auth_provider FROM users WHERE email = $1', [email]);
+    if (!result.rowCount) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const user = result.rows[0];
+    if (!user.password_hash) {
+      return res.status(401).json({ error: 'This account uses Google sign-in. Use Sign in with Google.' });
+    }
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const token = jwt.sign({ sub: user.id, email: user.email }, getJwtSecret(), { expiresIn: JWT_EXPIRY });
+    return res.json({ token, user: { id: user.id, email: user.email } });
+  } catch (err) {
+    console.error('[auth/login] fatal error:', err);
+    return res.status(500).json({ error: 'Could not log in.' });
+  }
+});
+
+app.get('/api/auth/google-config', (req, res) => {
+  const clientId = getGoogleClientId();
+  return res.json({ enabled: Boolean(clientId), clientId: clientId || '' });
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  if (!ensureDatabase(res)) return;
+
+  try {
+    await initDatabase();
+    const idToken = String(req.body?.idToken || '');
+    if (!idToken) return res.status(400).json({ error: 'Google token is required.' });
+
+    const profile = await verifyGoogleToken(idToken);
+    const db = getPool();
+
+    const existing = await db.query(
+      'SELECT id, email, google_sub, auth_provider FROM users WHERE google_sub = $1 OR email = $2 ORDER BY id ASC LIMIT 1',
+      [profile.googleSub, profile.email]
+    );
+
+    let user;
+
+    if (existing.rowCount) {
+      user = existing.rows[0];
+
+      if (!user.google_sub || user.google_sub !== profile.googleSub || user.auth_provider === 'local') {
+        const nextProvider = user.auth_provider === 'local' ? 'hybrid' : (user.auth_provider || 'google');
+        const updated = await db.query(
+          `
+            UPDATE users
+            SET google_sub = $2, auth_provider = $3
+            WHERE id = $1
+            RETURNING id, email
+          `,
+          [user.id, profile.googleSub, nextProvider]
+        );
+        user = updated.rows[0];
+      }
+    } else {
+      const inserted = await db.query(
+        `
+          INSERT INTO users (email, password_hash, auth_provider, google_sub)
+          VALUES ($1, NULL, 'google', $2)
+          RETURNING id, email
+        `,
+        [profile.email, profile.googleSub]
+      );
+      user = inserted.rows[0];
+      await writeUserIncidents(user.id, []);
+    }
+
+    const token = jwt.sign({ sub: user.id, email: user.email }, getJwtSecret(), { expiresIn: JWT_EXPIRY });
+    return res.json({ token, user: { id: user.id, email: user.email } });
+  } catch (err) {
+    console.error('[auth/google] fatal error:', err);
+    return res.status(500).json({ error: 'Google sign-in failed.' });
+  }
+});
+
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  return res.json({ user: req.user });
+});
+
+app.get('/api/incidents', requireAuth, async (req, res) => {
+  if (!ensureDatabase(res)) return;
+
+  try {
+    await initDatabase();
+    const incidents = await readUserIncidents(req.user.id);
+    return res.json({ incidents });
+  } catch (err) {
+    console.error('[incidents/get] fatal error:', err);
+    return res.status(500).json({ error: 'Could not load incidents.' });
+  }
+});
+
+app.post('/api/incidents/sync', requireAuth, async (req, res) => {
+  if (!ensureDatabase(res)) return;
+
+  try {
+    await initDatabase();
+    const incidents = sanitizeIncidentList(req.body?.incidents || []);
+    await writeUserIncidents(req.user.id, incidents);
+    return res.json({ ok: true, incidentsCount: incidents.length });
+  } catch (err) {
+    console.error('[incidents/sync] fatal error:', err);
+    return res.status(500).json({ error: 'Could not sync incidents.' });
+  }
+});
 
 app.post('/api/pdf-import', upload.single('file'), async (req, res) => {
   try {
@@ -545,7 +829,17 @@ app.post('/api/pdf-import', upload.single('file'), async (req, res) => {
 const port = parseInt(process.env.PORT || '8080', 10);
 
 if (require.main === module) {
-  app.listen(port, () => console.log(`LiftLog running on http://localhost:${port}`));
+  initDatabase()
+    .then(() => {
+      if (!hasDatabase()) {
+        console.warn('DATABASE_URL is not set. Auth and cloud sync routes will return 503.');
+      }
+      app.listen(port, () => console.log(`LiftLog running on http://localhost:${port}`));
+    })
+    .catch((err) => {
+      console.error('Failed to initialize database:', err.message);
+      process.exit(1);
+    });
 }
 
 module.exports = {

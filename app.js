@@ -15,6 +15,8 @@ const ICOLS={'Entrapment':'#4b5563','Door Issue':'#6b7280','Mechanical Failure':
 // LocalStorage keys and import requirements.
 const STORAGE_KEY='liftlog2';
 const STORAGE_RESET_KEY='liftlog_cleared_v1';
+const AUTH_TOKEN_KEY='liftlog_auth_token_v1';
+const AUTH_EMAIL_KEY='liftlog_auth_email_v1';
 const REQUIRED_IMPORT_FIELDS=['date','building','elevator','issue','status'];
 const PDF_FIELD_LABELS={
   date:['date','incident date','report date','service date'],
@@ -37,9 +39,262 @@ const getIncidentsByYear=year=>load().filter(row=>row.date.startsWith(year));
 const formatElevatorLabel=elevator=>`Elevator ${elevator}`;
 const isValidElevator=elevator=>ELEVS.includes(String(elevator||'').trim().toUpperCase());
 
-//  Storage helpers 
-const load=()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return[]}};
-const save=data=>localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+let INCIDENT_CACHE=[];
+let AUTH_TOKEN=localStorage.getItem(AUTH_TOKEN_KEY)||'';
+let AUTH_EMAIL=localStorage.getItem(AUTH_EMAIL_KEY)||'';
+let GOOGLE_CLIENT_ID='';
+
+function load(){
+  return INCIDENT_CACHE.slice();
+}
+
+function setLocalCache(data){
+  INCIDENT_CACHE=Array.isArray(data)?data.slice():[];
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(INCIDENT_CACHE));
+}
+
+function setAuthStatus(message){
+  const node=$('auth-status');
+  if(node)node.textContent=message;
+}
+
+function isLoggedIn(){
+  return Boolean(AUTH_TOKEN);
+}
+
+function getAuthHeaders(){
+  if(!AUTH_TOKEN)return {};
+  return {Authorization:`Bearer ${AUTH_TOKEN}`};
+}
+
+async function syncCloudData(data){
+  if(!isLoggedIn())return;
+  const response=await fetch('/api/incidents/sync',{
+    method:'POST',
+    headers:{'content-type':'application/json',...getAuthHeaders()},
+    body:JSON.stringify({incidents:data})
+  });
+  if(!response.ok){
+    const payload=await response.json().catch(()=>({}));
+    throw new Error(payload.error||`Cloud sync failed (${response.status})`);
+  }
+}
+
+function save(data){
+  setLocalCache(data);
+  if(isLoggedIn()){
+    syncCloudData(INCIDENT_CACHE).catch(error=>{
+      console.error('[cloud-sync] failed',error.message);
+      setAuthStatus(`Cloud sync error: ${error.message}`);
+    });
+  }
+}
+
+function setAuthSession(token,email){
+  AUTH_TOKEN=token||'';
+  AUTH_EMAIL=email||'';
+  if(AUTH_TOKEN){
+    localStorage.setItem(AUTH_TOKEN_KEY,AUTH_TOKEN);
+    localStorage.setItem(AUTH_EMAIL_KEY,AUTH_EMAIL);
+  }else{
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_EMAIL_KEY);
+  }
+  renderAuthState();
+}
+
+function renderAuthState(){
+  const loggedOut=$('auth-logged-out');
+  const loggedIn=$('auth-logged-in');
+  const userEmail=$('auth-user-email');
+
+  if(!loggedOut||!loggedIn||!userEmail)return;
+
+  if(isLoggedIn()){
+    loggedOut.style.display='none';
+    loggedIn.style.display='block';
+    userEmail.textContent=`Signed in as ${AUTH_EMAIL}`;
+    setAuthStatus('Cloud sync is active. Your incidents will load on any device after login.');
+  }else{
+    loggedOut.style.display='block';
+    loggedIn.style.display='none';
+    setAuthStatus('Login to sync incidents across devices.');
+  }
+}
+
+async function fetchCloudIncidents(){
+  if(!isLoggedIn())return [];
+  const response=await fetch('/api/incidents',{headers:getAuthHeaders()});
+  if(!response.ok){
+    const payload=await response.json().catch(()=>({}));
+    throw new Error(payload.error||`Failed to load cloud data (${response.status})`);
+  }
+  const payload=await response.json();
+  return Array.isArray(payload.incidents)?payload.incidents:[];
+}
+
+async function withAuth(endpoint,body){
+  const response=await fetch(endpoint,{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok){
+    throw new Error(payload.error||`Request failed (${response.status})`);
+  }
+  return payload;
+}
+
+async function loginWithGoogleIdToken(idToken){
+  const response=await fetch('/api/auth/google',{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({idToken})
+  });
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok){
+    throw new Error(payload.error||`Google sign-in failed (${response.status})`);
+  }
+  return payload;
+}
+
+async function registerUser(){
+  const email=String($('auth-email')?.value||'').trim().toLowerCase();
+  const password=String($('auth-password')?.value||'');
+  if(!email||!password){
+    setAuthStatus('Enter email and password to create an account.');
+    return;
+  }
+
+  try{
+    setAuthStatus('Creating account...');
+    const payload=await withAuth('/api/auth/register',{email,password});
+    setAuthSession(payload.token,payload.user?.email||email);
+    setLocalCache([]);
+    refresh();
+    showAddToast('ok','Account created. Cloud sync is now active.');
+  }catch(error){
+    setAuthStatus(error.message);
+    showAddToast('err',`Signup failed: ${error.message}`);
+  }
+}
+
+async function loginUser(){
+  const email=String($('auth-email')?.value||'').trim().toLowerCase();
+  const password=String($('auth-password')?.value||'');
+  if(!email||!password){
+    setAuthStatus('Enter email and password to log in.');
+    return;
+  }
+
+  try{
+    setAuthStatus('Logging in...');
+    const payload=await withAuth('/api/auth/login',{email,password});
+    setAuthSession(payload.token,payload.user?.email||email);
+    const cloudIncidents=await fetchCloudIncidents();
+    setLocalCache(cloudIncidents);
+    initYrDrop();
+    initFilters();
+    refresh();
+    showAddToast('ok','Logged in. Cloud data loaded.');
+  }catch(error){
+    setAuthStatus(error.message);
+    showAddToast('err',`Login failed: ${error.message}`);
+  }
+}
+
+async function handleGoogleCredentialResponse(response){
+  const idToken=String(response?.credential||'');
+  if(!idToken){
+    setAuthStatus('Google sign-in did not return a token.');
+    return;
+  }
+
+  try{
+    setAuthStatus('Signing in with Google...');
+    const payload=await loginWithGoogleIdToken(idToken);
+    setAuthSession(payload.token,payload.user?.email||'');
+    const cloudIncidents=await fetchCloudIncidents();
+    setLocalCache(cloudIncidents);
+    initYrDrop();
+    initFilters();
+    refresh();
+    showAddToast('ok','Signed in with Google. Cloud data loaded.');
+  }catch(error){
+    setAuthStatus(error.message);
+    showAddToast('err',`Google sign-in failed: ${error.message}`);
+  }
+}
+
+async function initGoogleSignIn(){
+  const slot=$('google-signin');
+  if(!slot)return;
+
+  try{
+    const response=await fetch('/api/auth/google-config');
+    const config=await response.json().catch(()=>({}));
+    GOOGLE_CLIENT_ID=String(config.clientId||'');
+
+    if(!response.ok||!config.enabled||!GOOGLE_CLIENT_ID){
+      slot.textContent='Google sign-in is not configured yet.';
+      return;
+    }
+
+    if(!window.google?.accounts?.id){
+      slot.textContent='Google sign-in script is unavailable.';
+      return;
+    }
+
+    window.google.accounts.id.initialize({
+      client_id:GOOGLE_CLIENT_ID,
+      callback:handleGoogleCredentialResponse
+    });
+
+    slot.innerHTML='';
+    window.google.accounts.id.renderButton(slot,{
+      theme:'outline',
+      size:'large',
+      shape:'pill',
+      text:'signin_with',
+      width:220
+    });
+  }catch(error){
+    slot.textContent='Google sign-in failed to initialize.';
+    console.error('[google-init] failed',error.message);
+  }
+}
+
+function logoutUser(){
+  setAuthSession('','');
+  if(window.google?.accounts?.id){
+    window.google.accounts.id.disableAutoSelect();
+  }
+  setAuthStatus('Logged out. Data in this browser remains local until next login.');
+  showAddToast('info','Logged out.');
+}
+
+async function hydrateInitialData(){
+  let localData=[];
+  try{
+    localData=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+  }catch{
+    localData=[];
+  }
+
+  setLocalCache(localData);
+  renderAuthState();
+
+  if(!isLoggedIn())return;
+
+  try{
+    const cloudIncidents=await fetchCloudIncidents();
+    setLocalCache(cloudIncidents);
+    setAuthStatus('Cloud sync is active. Your incidents are loaded from your account.');
+  }catch(error){
+    setAuthStatus(`Cloud load failed: ${error.message}`);
+  }
+}
 
 function escapeRx(value){return value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
 
@@ -1592,14 +1847,16 @@ function initPdfImport(){
 }
 
 //  Boot 
-if(!localStorage.getItem(STORAGE_RESET_KEY)){
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.setItem(STORAGE_RESET_KEY,'1');
+async function boot(){
+  await hydrateInitialData();
+  await initGoogleSignIn();
+  initYrDrop();
+  initFilters();
+  initPdfImport();
+  renderDash();
+  renderLog();
+  renderTrap();
+  renderDL();
 }
-initYrDrop();
-initFilters();
-initPdfImport();
-renderDash();
-renderLog();
-renderTrap();
-renderDL();
+
+boot();

@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -19,6 +20,25 @@
       <img class="comp_logo" src="CousinsLogo.png" alt="company logo">
       <div class="logo-mark">BUCKHEAD PLAZA</div>
       <div class="logo-sub"></div>
+    </div>
+
+    <div class="auth-box">
+      <label>Account</label>
+      <div id="auth-logged-out">
+        <input id="auth-email" type="email" placeholder="Email">
+        <input id="auth-password" type="password" placeholder="Password (min 8 chars)">
+        <div class="auth-actions">
+          <button class="auth-btn" type="button" onclick="loginUser()">Login</button>
+          <button class="auth-btn" type="button" onclick="registerUser()">Create Account</button>
+        </div>
+        <div class="auth-or">or</div>
+        <div id="google-signin" class="google-signin-slot"></div>
+      </div>
+      <div id="auth-logged-in" style="display:none">
+        <div class="auth-user" id="auth-user-email">Signed in</div>
+        <button class="auth-btn" type="button" onclick="logoutUser()">Logout</button>
+      </div>
+      <div class="auth-status" id="auth-status">Login to sync incidents across devices.</div>
     </div>
     
     <nav class="nav">
