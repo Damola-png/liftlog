@@ -113,7 +113,10 @@ function renderAuthState(){
   if(isLoggedIn()){
     loggedOut.style.display='none';
     loggedIn.style.display='block';
-    userEmail.textContent=`Signed in as ${AUTH_EMAIL}`;
+    const picture=localStorage.getItem('liftlog_auth_picture')||'';
+    userEmail.innerHTML=picture
+      ?`<img src="${picture}" class="auth-avatar" alt="Profile picture"><span>${AUTH_EMAIL}</span>`
+      :`<span>${AUTH_EMAIL}</span>`;
     setAuthStatus('Cloud sync is active. Your incidents will load on any device after login.');
   }else{
     loggedOut.style.display='block';
@@ -211,6 +214,15 @@ async function handleGoogleCredentialResponse(response){
     return;
   }
 
+  // Decode the JWT to get profile picture
+  try{
+    const payload=JSON.parse(atob(idToken.split('.')[1]));
+    if(payload.picture)localStorage.setItem('liftlog_auth_picture',payload.picture);
+    else localStorage.removeItem('liftlog_auth_picture');
+  }catch{
+    localStorage.removeItem('liftlog_auth_picture');
+  }
+
   try{
     setAuthStatus('Signing in with Google...');
     const payload=await loginWithGoogleIdToken(idToken);
@@ -227,9 +239,28 @@ async function handleGoogleCredentialResponse(response){
   }
 }
 
+async function waitForGoogleScript(timeoutMs=5000){
+  if(window.google?.accounts?.id)return true;
+  return new Promise(resolve=>{
+    const start=Date.now();
+    const interval=setInterval(()=>{
+      if(window.google?.accounts?.id){
+        clearInterval(interval);
+        resolve(true);
+      }else if(Date.now()-start>timeoutMs){
+        clearInterval(interval);
+        resolve(false);
+      }
+    },100);
+  });
+}
+
 async function initGoogleSignIn(){
   const slot=$('google-signin');
   if(!slot)return;
+
+  // Show spinner while loading
+  slot.innerHTML='<div class="google-spinner"><div class="google-spinner-dot"></div><div class="google-spinner-dot"></div><div class="google-spinner-dot"></div></div>';
 
   try{
     const response=await fetch('/api/auth/google-config');
@@ -241,7 +272,9 @@ async function initGoogleSignIn(){
       return;
     }
 
-    if(!window.google?.accounts?.id){
+    // Wait up to 5 seconds for the Google GSI script to load
+    const ready=await waitForGoogleScript(5000);
+    if(!ready){
       slot.textContent='Google sign-in script is unavailable.';
       return;
     }
@@ -260,6 +293,7 @@ async function initGoogleSignIn(){
       width:220
     });
   }catch(error){
+    slot.innerHTML='';
     slot.textContent='Google sign-in failed to initialize.';
     console.error('[google-init] failed',error.message);
   }
@@ -267,6 +301,7 @@ async function initGoogleSignIn(){
 
 function logoutUser(){
   setAuthSession('','');
+  localStorage.removeItem('liftlog_auth_picture');
   if(window.google?.accounts?.id){
     window.google.accounts.id.disableAutoSelect();
   }
@@ -1082,6 +1117,28 @@ function clearIncidentLog(){
   refresh();
 }
 
+function editIncident(id){
+  const data=load();
+  const r=data.find(row=>row.id===id);
+  if(!r)return;
+  // Populate the Add Incident form with existing values
+  $('f-date').value=r.date||'';
+  $('f-bld').value=r.building||'';
+  // Match elevator dropdown
+  const elevLabel=formatElevatorLabel(r.elevator);
+  const elevOpt=[...$('f-elev').options].find(o=>o.text===elevLabel||o.value===elevLabel);
+  if(elevOpt)$('f-elev').value=elevOpt.value;
+  $('f-issue').value=r.issue||'';
+  $('f-stat').value=r.status||'Open';
+  $('f-desc').value=r.description||'';
+  $('f-notes').value=r.notes||'';
+  // Mark form as editing this ID
+  $('f-date').dataset.editId=String(id);
+  // Scroll to Add Incident page
+  go('add');
+  showAddToast('info',`Editing incident #${id}. Make changes and click Save.`);
+}
+
 //  Incident Log 
 function renderLog(){
   let data=load();
@@ -1097,7 +1154,7 @@ function renderLog(){
   data.sort((a,b)=>b.date.localeCompare(a.date));
   setText('log-cnt',data.length);
   setHtml('log-body',data.length
-    ?data.map(r=>`<tr><td>${r.id}</td><td>${r.date}</td><td>${r.building||'-'}</td><td>${formatElevatorLabel(r.elevator)}</td><td><span class="badge ${bClass(r.issue)}">${r.issue}</span></td><td class="log-desc">${r.description||'-'}</td><td><select class="status-edit ${sClass(r.status)}" aria-label="Update status for incident ${r.id}" onchange="updateIncidentStatus(${r.id},this.value)">${STATS.map(status=>`<option value="${status}" ${status===r.status?'selected':''}>${status}</option>`).join('')}</select></td><td><button type="button" class="row-del" aria-label="Delete incident ${r.id}" onclick="deleteIncident(${r.id})"><i class="ti ti-trash"></i>Delete</button></td></tr>`).join('')
+    ?data.map(r=>`<tr><td>${r.id}</td><td>${r.date}</td><td>${r.building||'-'}</td><td>${formatElevatorLabel(r.elevator)}</td><td><span class="badge ${bClass(r.issue)}">${r.issue}</span></td><td class="log-desc">${r.description||'-'}</td><td><select class="status-edit ${sClass(r.status)}" aria-label="Update status for incident ${r.id}" onchange="updateIncidentStatus(${r.id},this.value)">${STATS.map(status=>`<option value="${status}" ${status===r.status?'selected':''}>${status}</option>`).join('')}</select></td><td><button type="button" class="row-edit" aria-label="Edit incident ${r.id}" onclick="editIncident(${r.id})"><i class="ti ti-pencil"></i>Edit</button><button type="button" class="row-del" aria-label="Delete incident ${r.id}" onclick="deleteIncident(${r.id})"><i class="ti ti-trash"></i>Delete</button></td></tr>`).join('')
     :`<tr><td colspan="8"><div class="nd"><i class="ti ti-mood-empty"></i>No incidents match your filters.</div></td></tr>`);
 }
 
@@ -1811,7 +1868,21 @@ function saveInc(){
     showAddToast('err','Please fill in Date and Building.');
     return;
   }
+  const editId=$('f-date').dataset.editId?parseInt($('f-date').dataset.editId,10):null;
   const data=load();
+  if(editId){
+    // Update existing incident
+    const idx=data.findIndex(r=>r.id===editId);
+    if(idx!==-1){
+      data[idx]={...data[idx],date,building:bld,elevator:elev,issue,description:desc,status:stat,notes};
+      save(data);
+      showAddToast('ok',`Incident #${editId} updated.`);
+      delete $('f-date').dataset.editId;
+      clearIncidentForm();
+      initYrDrop();refresh();
+      return;
+    }
+  }
   const id=data.length?Math.max(...data.map(r=>r.id))+1:1;
   data.push({id,date,building:bld,elevator:elev,issue,description:desc,status:stat,notes,created:new Date().toISOString()});
   save(data);
