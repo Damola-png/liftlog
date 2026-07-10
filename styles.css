@@ -241,6 +241,8 @@ image.login-logo{
 }
 
 .auth-user{
+  display:flex;
+  align-items:center;
   color:white;
   font-size:12px;
   margin-bottom:7px;
