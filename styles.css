@@ -31,7 +31,7 @@ html,body{
 .side{
   background:
     linear-gradient(rgba(0,0, 0, 0.4), rgba(0,0,0,.4)),
-    url(image4.png);
+    url(assets/image4.png);
   background-size:cover;
   background-position: center;
   border-right:1px solid var(--bdr);
@@ -115,16 +115,66 @@ html,body{
   border-top:1px solid var(--bdr);
 }
 
+body.login-body{
+  background-image: url(assets/image4.png);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-family:var(--fb);
+  font-size:14px;
+  color:var(--tx);
+  overflow:hidden;
+  gap: 50px;
+}
+
+image.login-logo{
+  max-width: 300px;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  box-shadow: 0px 4px 12px rgba(3, 3, 3, 0.3);
+}
+
 .auth-box{
+  width: 100%;
+  max-width: 500px;
+  min-width: 480px;
   padding:14px 16px;
   border-top:1px solid var(--bdr);
   display:flex;
   flex-direction:column;
-  gap:8px;
+  background:rgba(163, 148, 148, 0.5);
+  border-radius: 10px;
+  gap:10px;
+}
+
+#auth-email{
+  width:100%;
+  margin-bottom:7px;
+  border:1px solid var(--bdr2);
+  border-radius:var(--r);
+  padding:8px 10px;
+  font-size:14px;
+  font-family:var(--fb);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+#auth-password{
+  width:100%;
+  margin-bottom:7px;
+  border:1px solid var(--bdr2);
+  border-radius:var(--r);
+  padding:8px 10px;
+  font-size:14px;
+  background: rgba(255, 255, 255, 0.8);
+  font-family:var(--fb);
 }
 
 .auth-box label{
-  font-size:12px;
+  font-size:16px;
   color:white;
   letter-spacing:1.5px;
   text-transform:uppercase;
@@ -148,7 +198,7 @@ html,body{
 
 .auth-or{
   color:rgba(255,255,255,0.85);
-  font-size:11px;
+  font-size:13px;
   margin:4px 0 2px;
   text-transform:uppercase;
   letter-spacing:0.8px;
@@ -161,18 +211,18 @@ html,body{
 }
 
 .auth-btn{
-  border:1px solid rgba(255,255,255,0.35);
-  background:rgba(255,255,255,0.14);
+  border:1px solid rgba(255,255,255,0.8);
+  background:rgba(255,255,255,0.12);
   color:white;
   border-radius:var(--r);
   padding:7px 9px;
   cursor:pointer;
-  font-size:12px;
+  font-size:16px;
   font-family:var(--fb);
 }
 
 .auth-btn:hover{
-  background:rgba(255,255,255,0.24);
+  background:rgba(255,255,255,0.4);
 }
 
 .auth-user{
@@ -205,7 +255,7 @@ html,body{
   font-size:13px;
   width:100%;
   cursor:pointer;
-  font-family:var(--fb)
+  font-family:var(--fb);
 }
 
 .main{
