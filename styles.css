@@ -138,6 +138,16 @@ image.login-logo{
   box-shadow: 0px 4px 12px rgba(3, 3, 3, 0.3);
 }
 
+.auth-box-main{
+  max-width: 400px;
+  width: 100%;
+  padding:14px 16px;
+  border-top:1px solid var(--bdr);
+  background:rgba(163, 148, 148, 0.5);
+  border-radius: 10px;
+  gap:15px;
+}
+
 .auth-box{
   width: 100%;
   max-width: 500px;
@@ -244,7 +254,8 @@ image.login-logo{
   letter-spacing:1.5px;
   text-transform:uppercase;
   display:block;
-  margin-bottom:6px
+  margin-bottom:6px;
+  
 }
 .yr-box select{
   background:var(--surf2);
