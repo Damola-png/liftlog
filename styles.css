@@ -139,13 +139,15 @@ image.login-logo{
 }
 
 .auth-box-main{
-  max-width: 400px;
+  max-width: 380px;
   width: 100%;
   padding:14px 16px;
+  color:white;
   border-top:1px solid var(--bdr);
   background:rgba(163, 148, 148, 0.5);
   border-radius: 10px;
   gap:15px;
+
 }
 
 .auth-box{
