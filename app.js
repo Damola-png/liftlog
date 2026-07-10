@@ -125,6 +125,11 @@ function renderAuthState(){
   }
 }
 
+function renderUserBadge(){
+  const node=$('auth-user-email');
+  if(node)node.textContent=AUTH_EMAIL||'Signed in';
+}
+
 async function fetchCloudIncidents(){
   if(!isLoggedIn())return [];
   const response=await fetch('/api/incidents',{headers:getAuthHeaders()});
@@ -174,12 +179,9 @@ async function registerUser(){
     setAuthStatus('Creating account...');
     const payload=await withAuth('/api/auth/register',{email,password});
     setAuthSession(payload.token,payload.user?.email||email);
-    setLocalCache([]);
-    refresh();
-    showAddToast('ok','Account created. Cloud sync is now active.');
+    window.location.href='index.html';
   }catch(error){
     setAuthStatus(error.message);
-    showAddToast('err',`Signup failed: ${error.message}`);
   }
 }
 
@@ -195,15 +197,9 @@ async function loginUser(){
     setAuthStatus('Logging in...');
     const payload=await withAuth('/api/auth/login',{email,password});
     setAuthSession(payload.token,payload.user?.email||email);
-    const cloudIncidents=await fetchCloudIncidents();
-    setLocalCache(cloudIncidents);
-    initYrDrop();
-    initFilters();
-    refresh();
-    showAddToast('ok','Logged in. Cloud data loaded.');
+    window.location.href='index.html';
   }catch(error){
     setAuthStatus(error.message);
-    showAddToast('err',`Login failed: ${error.message}`);
   }
 }
 
@@ -227,15 +223,9 @@ async function handleGoogleCredentialResponse(response){
     setAuthStatus('Signing in with Google...');
     const payload=await loginWithGoogleIdToken(idToken);
     setAuthSession(payload.token,payload.user?.email||'');
-    const cloudIncidents=await fetchCloudIncidents();
-    setLocalCache(cloudIncidents);
-    initYrDrop();
-    initFilters();
-    refresh();
-    showAddToast('ok','Signed in with Google. Cloud data loaded.');
+    window.location.href='index.html';
   }catch(error){
     setAuthStatus(error.message);
-    showAddToast('err',`Google sign-in failed: ${error.message}`);
   }
 }
 
@@ -305,8 +295,7 @@ function logoutUser(){
   if(window.google?.accounts?.id){
     window.google.accounts.id.disableAutoSelect();
   }
-  setAuthStatus('Logged out. Data in this browser remains local until next login.');
-  showAddToast('info','Logged out.');
+  window.location.href='login.html';
 }
 
 async function hydrateInitialData(){
@@ -318,7 +307,7 @@ async function hydrateInitialData(){
   }
 
   setLocalCache(localData);
-  renderAuthState();
+  renderUserBadge();
 
   if(!isLoggedIn())return;
 
@@ -1917,17 +1906,22 @@ function initPdfImport(){
   if(clearBtn)clearBtn.addEventListener('click',clearIncidentForm);
 }
 
-//  Boot 
+//  Boot
 async function boot(){
-  await hydrateInitialData();
+  if($('pg-dash')){
+    await hydrateInitialData();
+    initYrDrop();
+    initFilters();
+    initPdfImport();
+    renderDash();
+    renderLog();
+    renderTrap();
+    renderDL();
+    return;
+  }
+
+  renderAuthState();
   await initGoogleSignIn();
-  initYrDrop();
-  initFilters();
-  initPdfImport();
-  renderDash();
-  renderLog();
-  renderTrap();
-  renderDL();
 }
 
 boot();
