@@ -998,6 +998,47 @@ function initYrDrop(){
 const getYr=()=>$('gyr').value;
 
 //  Page navigation 
+function setMobileMenuOpen(open,returnFocus=false){
+  const side=document.querySelector('.side');
+  const toggle=$('mobile-menu-toggle');
+  if(!side||!toggle)return;
+
+  side.classList.toggle('menu-open',open);
+  toggle.setAttribute('aria-expanded',String(open));
+  toggle.setAttribute('aria-label',open?'Close navigation menu':'Open navigation menu');
+  const icon=toggle.querySelector('i');
+  if(icon)icon.className=open?'ti ti-x':'ti ti-menu-2';
+  if(returnFocus)toggle.focus();
+}
+
+function toggleMobileMenu(){
+  const side=document.querySelector('.side');
+  setMobileMenuOpen(!side?.classList.contains('menu-open'));
+}
+
+function initMobileMenu(){
+  const side=document.querySelector('.side');
+  const toggle=$('mobile-menu-toggle');
+  if(!side||!toggle)return;
+
+  document.addEventListener('click',event=>{
+    if(side.classList.contains('menu-open')&&!side.contains(event.target)){
+      setMobileMenuOpen(false);
+    }
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&side.classList.contains('menu-open')){
+      setMobileMenuOpen(false,true);
+    }
+  });
+  const mobileQuery=window.matchMedia('(max-width: 980px)');
+  const handleBreakpointChange=event=>{
+    if(!event.matches)setMobileMenuOpen(false);
+  };
+  if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',handleBreakpointChange);
+  else mobileQuery.addListener(handleBreakpointChange);
+}
+
 function go(id){
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.ni').forEach(b=>b.classList.remove('on'));
@@ -1007,6 +1048,7 @@ function go(id){
   if(id==='log')renderLog();
   if(id==='trap')renderTrap();
   if(id==='dl')renderDL();
+  if(window.matchMedia('(max-width: 980px)').matches)setMobileMenuOpen(false);
 }
 
 function refresh(){renderDash();renderLog();renderTrap();renderDL()}
@@ -1909,6 +1951,7 @@ function initPdfImport(){
 //  Boot
 async function boot(){
   if($('pg-dash')){
+    initMobileMenu();
     await hydrateInitialData();
     initYrDrop();
     initFilters();

@@ -25,23 +25,28 @@
       <img class="comp_logo" src="assets/CousinsLogo.png" alt="company logo">
       <div class="logo-mark">BUCKHEAD PLAZA</div>
       <div class="logo-sub"></div>
+      <button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="mobile-menu-panel" aria-expanded="false" onclick="toggleMobileMenu()">
+        <i class="ti ti-menu-2" aria-hidden="true"></i>
+      </button>
     </div>
 
-    <div class="auth-box-main">
-      <div class="auth-user" id="auth-user-email">Signed in</div>
-      <button class="auth-btn" type="button" onclick="logoutUser()">Logout</button>
-    </div>
-    
-    <nav class="nav">
-      <button class="ni on" onclick="go('dash')"><i class="ti ti-layout-dashboard"></i>Dashboard</button>
-      <button class="ni" onclick="go('add')"><i class="ti ti-plus"></i>Add Incident</button>
-      <button class="ni" onclick="go('log')"><i class="ti ti-list-details"></i>Incident Log</button>
-      <button class="ni" onclick="go('trap')"><i class="ti ti-alert-triangle"></i>Entrapment Tracker</button>
-      <button class="ni" onclick="go('dl')"><i class="ti ti-file-spreadsheet"></i>Excel Export</button>
-    </nav>
-    <div class="yr-box">
-      <label>Year</label>
-      <select id="gyr" onchange="refresh()"></select>
+    <div class="mobile-menu-panel" id="mobile-menu-panel">
+      <div class="auth-box-main">
+        <div class="auth-user" id="auth-user-email">Signed in</div>
+        <button class="auth-btn" type="button" onclick="logoutUser()">Logout</button>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="ni on" onclick="go('dash')"><i class="ti ti-layout-dashboard"></i>Dashboard</button>
+        <button class="ni" onclick="go('add')"><i class="ti ti-plus"></i>Add Incident</button>
+        <button class="ni" onclick="go('log')"><i class="ti ti-list-details"></i>Incident Log</button>
+        <button class="ni" onclick="go('trap')"><i class="ti ti-alert-triangle"></i>Entrapment Tracker</button>
+        <button class="ni" onclick="go('dl')"><i class="ti ti-file-spreadsheet"></i>Excel Export</button>
+      </nav>
+      <div class="yr-box">
+        <label>Year</label>
+        <select id="gyr" onchange="refresh();setMobileMenuOpen(false)"></select>
+      </div>
     </div>
   </aside>
 
