@@ -1012,6 +1012,7 @@ body.login-body{
 }
 
 @media (max-width: 980px){
+  .shell{grid-template-columns:minmax(0,1fr);height:auto;min-height:100dvh;overflow:visible}
   .side{position:sticky;top:0;z-index:50;min-width:0;overflow:visible}
   .logo{min-height:64px;padding:10px 14px;flex-direction:row;justify-content:flex-start;overflow:visible}
   .comp_logo{width:min(92px,28vw);height:34px;max-width:92px;margin:0 12px 0 0;object-fit:contain}
